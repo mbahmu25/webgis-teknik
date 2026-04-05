@@ -1,0 +1,19 @@
+# Core Framework
+Django>=4.2,<5.1           # Versi LTS (Long Term Support) sangat disarankan untuk kestabilan
+psycopg2-binary>=2.9       # Driver PostgreSQL (gunakan 'psycopg2' jika di production Linux untuk performa lebih baik)
+
+# REST API & GIS
+djangorestframework>=3.14  # Toolkit untuk membuat Web API
+djangorestframework-gis>=1.0 # Add-on krusial untuk output GeoJSON di serializer
+django-filter>=23.2        # Untuk fitur filtering (Tahun, Kategori) di API
+
+# Image Processing
+Pillow>=10.0               # Wajib untuk menghandle models.ImageField (upload foto kegiatan)
+
+# Utilities
+python-dotenv>=1.0         # Untuk mengelola environment variables (SECRET_KEY, DB credentials)
+django-cors-headers>=4.3   # Wajib jika frontend (React/Vue/Leaflet) beda domain/port dengan backend
+
+# Server (Production use)
+gunicorn>=21.2             # WSGI HTTP Server untuk production deployment
+django-cors-headers
