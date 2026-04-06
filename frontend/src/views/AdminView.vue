@@ -19,13 +19,11 @@ import Toolbar from 'primevue/toolbar';
 import Tag from 'primevue/tag';
 import IconField from 'primevue/iconfield';
 import InputIcon from 'primevue/inputicon';
-import FileUpload from 'primevue/fileupload'; // Opsional jika mau pakai UI PrimeVue, disini pakai input native biar simpel
 
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 
 // --- CONFIG ---
-// Sesuaikan dengan URL endpoint API Django Anda
 const API_URL = 'http://127.0.0.1:8000/api/peran-ft/'; 
 const KATEGORI_URL = 'http://127.0.0.1:8000/api/kategori/';
 
@@ -33,14 +31,18 @@ const KATEGORI_URL = 'http://127.0.0.1:8000/api/kategori/';
 const toast = useToast();
 const confirm = useConfirm();
 const items = ref([]);
-const categories = ref([]); // Untuk Dropdown Kategori
+const categories = ref([]);
 const loading = ref(false);
 const productDialog = ref(false);
 const isEditMode = ref(false);
 const submitted = ref(false);
 
+// --- STATE KELOLA KATEGORI ---
+const manageCategoryDialog = ref(false);
+const newCategoryName = ref('');
+const savingCategory = ref(false);
+
 // --- OPTIONS SDGS (1-17) ---
-// Membuat array [{label: 'SDG 1', value: 1}, ..., {label: 'SDG 17', value: 17}]
 const sdgOptions = Array.from({ length: 17 }, (_, i) => ({
     label: `SDG ${i + 1}`,
     value: i + 1
@@ -51,21 +53,21 @@ const filters = ref({
     global: { value: null, matchMode: 'contains' }
 });
 
-// Form State (Sesuai Model Django PeranFT)
+// Form State
 const form = ref({
     id: null,
     nama_kegiatan: '',
     tahun: new Date().getFullYear(),
-    kategori: null,      // ID Kategori (ForeignKey)
-    kategori_sdgs: null, // Integer 1-17
+    kategori: null,
+    kategori_sdgs: null,
     abstrak: '',
     nama_mitra: '',
     lokasi_administratif: '',
-    latitude: -7.7702732,  // Default Lat (Jogja/UGM)
-    longitude: 110.3778507, // Default Lng (Jogja/UGM)
+    latitude: -7.7702732,
+    longitude: 110.3778507,
     url: '',
-    foto: null,          // File Object
-    foto_preview: null   // URL string untuk preview saat edit
+    foto: null,
+    foto_preview: null
 });
 
 // Map Picker Variables
@@ -77,10 +79,9 @@ let pickerMarker = null;
 const fetchCategories = async () => {
     try {
         const res = await axios.get(KATEGORI_URL);
-        // Sesuaikan jika response API Django anda ada pagination (res.data.results) atau list langsung (res.data)
         const data = res.data.results || res.data;
         categories.value = data.map(c => ({
-            label: c.nama, // Asumsi field di model KategoriKegiatan adalah 'nama'
+            label: c.nama, 
             value: c.id
         }));
     } catch (e) { console.error("Gagal load kategori", e); }
@@ -90,19 +91,15 @@ const fetchData = async () => {
     loading.value = true;
     try {
         const res = await axios.get(API_URL);
-        // Handle GeoJSON Response dari Django (django-rest-framework-gis)
-        // Biasanya formatnya: { type: "FeatureCollection", features: [...] }
-        const features = res.data.features || res.data; // fallback jika bukan geojson standard
+        const features = res.data.features || res.data; 
         
         items.value = features.map(f => {
-            // Ambil properties
             const props = f.properties;
-            // Ambil koordinat dari geometry (GeoJSON: [lng, lat])
             const lng = f.geometry ? f.geometry.coordinates[0] : 110.3778507;
             const lat = f.geometry ? f.geometry.coordinates[1] : -7.7702732;
 
             return {
-                id: f.id, // ID biasanya di root feature atau di properties
+                id: f.id, 
                 ...props,
                 lat: lat,
                 lng: lng
@@ -110,13 +107,71 @@ const fetchData = async () => {
         });
     } catch (e) {
         toast.add({ severity: 'error', summary: 'Error', detail: 'Gagal mengambil data', life: 3000 });
-        console.error(e);
     } finally {
         loading.value = false;
     }
 };
 
-// --- CRUD LOGIC ---
+// --- CRUD KATEGORI LOGIC ---
+
+const openManageCategory = () => {
+    newCategoryName.value = '';
+    manageCategoryDialog.value = true;
+    fetchCategories(); // Pastikan data terbaru
+};
+
+const saveCategory = async () => {
+    if (!newCategoryName.value.trim()) {
+        toast.add({ severity: 'warn', summary: 'Peringatan', detail: 'Nama kategori wajib diisi.', life: 3000 });
+        return;
+    }
+    
+    savingCategory.value = true;
+    try {
+        const res = await axios.post(KATEGORI_URL, { nama: newCategoryName.value });
+        toast.add({ severity: 'success', summary: 'Berhasil', detail: 'Kategori baru ditambahkan', life: 3000 });
+        
+        newCategoryName.value = ''; // Reset input
+        await fetchCategories(); // Refresh list di table modal & dropdown
+        
+        // Auto-select di form utama jika form sedang terbuka
+        const newCatId = res.data.id || (res.data.results && res.data.results.id);
+        if (newCatId && productDialog.value) {
+            form.value.kategori = newCatId;
+        }
+    } catch (e) {
+        toast.add({ severity: 'error', summary: 'Error', detail: 'Gagal menyimpan kategori', life: 3000 });
+    } finally {
+        savingCategory.value = false;
+    }
+};
+
+const deleteCategory = (id, name) => {
+    confirm.require({
+        message: `Hapus kategori "${name}"? Data kegiatan yang memakai kategori ini mungkin akan terdampak.`,
+        header: 'Konfirmasi Hapus Kategori',
+        icon: 'pi pi-exclamation-triangle',
+        acceptProps: { label: 'Hapus', severity: 'danger' },
+        rejectProps: { label: 'Batal', severity: 'secondary', outlined: true },
+        accept: async () => {
+            try {
+                await axios.delete(`${KATEGORI_URL}${id}/`);
+                toast.add({ severity: 'success', summary: 'Terhapus', detail: 'Kategori berhasil dihapus', life: 3000 });
+                
+                // Jika kategori yg dihapus sedang dipilih di form, reset dropdown-nya
+                if (form.value.kategori === id) {
+                    form.value.kategori = null;
+                }
+                
+                fetchCategories(); // Refresh list
+            } catch (e) {
+                toast.add({ severity: 'error', summary: 'Error', detail: 'Gagal menghapus kategori', life: 3000 });
+            }
+        }
+    });
+};
+
+// --- CRUD KEGIATAN LOGIC ---
 
 const openNew = () => {
     form.value = {
@@ -140,16 +195,13 @@ const openNew = () => {
 };
 
 const editProduct = (item) => {
-    // Mapping data dari table ke form
-    // Pastikan field 'kategori' di item sesuai dengan value dropdown (ID)
     form.value = { 
         ...item,
-        // Jika API mengembalikan object kategori nested, ambil ID-nya. Jika ID, biarkan.
         kategori: (typeof item.kategori === 'object' && item.kategori !== null) ? item.kategori.id : item.kategori,
         latitude: item.lat, 
         longitude: item.lng,
-        foto: null, // Reset input file baru
-        foto_preview: item.foto // Simpan URL foto lama untuk preview
+        foto: null, 
+        foto_preview: item.foto 
     };
     isEditMode.value = true;
     productDialog.value = true;
@@ -158,16 +210,13 @@ const editProduct = (item) => {
 // --- MAP LOGIC (LEAFLET) ---
 
 const onDialogShow = () => {
-    // Render map setelah dialog muncul (nextTick)
     nextTick(() => {
         initPickerMap();
     });
 };
 
 const initPickerMap = () => {
-    if (pickerMap) {
-        pickerMap.remove(); // Bersihkan map lama agar tidak duplikat
-    }
+    if (pickerMap) pickerMap.remove(); 
     
     const center = [form.value.latitude, form.value.longitude];
     pickerMap = L.map('picker-map').setView(center, 15);
@@ -176,17 +225,14 @@ const initPickerMap = () => {
         maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(pickerMap);
 
-    // Marker draggable
     pickerMarker = L.marker(center, { draggable: true }).addTo(pickerMap);
 
-    // Event saat marker digeser
     pickerMarker.on('dragend', (e) => {
         const { lat, lng } = e.target.getLatLng();
         form.value.latitude = lat;
         form.value.longitude = lng;
     });
 
-    // Event saat peta diklik
     pickerMap.on('click', (e) => {
         const { lat, lng } = e.latlng;
         pickerMarker.setLatLng([lat, lng]);
@@ -194,8 +240,7 @@ const initPickerMap = () => {
         form.value.longitude = lng;
     });
     
-    // Fix render size bug di dalam modal
-    setTimeout(() => { pickerMap.invalidateSize(); }, 200);
+    setTimeout(() => { pickerMap.invalidateSize(); }, 300);
 };
 
 // --- FILE HANDLING ---
@@ -203,7 +248,6 @@ const onFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
         form.value.foto = file;
-        // Preview lokal
         form.value.foto_preview = URL.createObjectURL(file);
     }
 };
@@ -213,17 +257,15 @@ const onFileSelect = (event) => {
 const saveProduct = async () => {
     submitted.value = true;
 
-    // Validasi Field Wajib
     if (!form.value.nama_kegiatan || !form.value.kategori) {
         toast.add({ severity: 'warn', summary: 'Validasi', detail: 'Nama Kegiatan dan Kategori wajib diisi.', life: 3000 });
         return;
     }
 
-    // Gunakan FormData karena ada ImageField
     const formData = new FormData();
     formData.append('nama_kegiatan', form.value.nama_kegiatan);
     formData.append('tahun', form.value.tahun);
-    formData.append('kategori', form.value.kategori); // Kirim ID
+    formData.append('kategori', form.value.kategori); 
     formData.append('abstrak', form.value.abstrak || '');
     formData.append('nama_mitra', form.value.nama_mitra || '');
     formData.append('lokasi_administratif', form.value.lokasi_administratif || '');
@@ -233,28 +275,23 @@ const saveProduct = async () => {
         formData.append('kategori_sdgs', form.value.kategori_sdgs);
     }
 
-    // Handle Koordinat untuk Django PointField
-    // Django REST Framework GIS biasanya mengharapkan GeoJSON String untuk PointField jika pakai FormData
     const geoJsonPoint = JSON.stringify({
         type: "Point",
         coordinates: [parseFloat(form.value.longitude), parseFloat(form.value.latitude)]
     });
     formData.append('koordinat', geoJsonPoint);
 
-    // Handle Foto (Hanya kirim jika user upload baru)
     if (form.value.foto instanceof File) {
         formData.append('foto', form.value.foto);
     }
 
     try {
         if (isEditMode.value) {
-            // PATCH untuk update
             await axios.patch(`${API_URL}${form.value.id}/`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.add({ severity: 'success', summary: 'Berhasil', detail: 'Data berhasil diperbarui', life: 3000 });
         } else {
-            // POST untuk create
             await axios.post(API_URL, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
@@ -262,15 +299,13 @@ const saveProduct = async () => {
         }
         
         productDialog.value = false;
-        fetchData(); // Refresh table
+        fetchData(); 
     } catch (e) {
-        console.error(e);
         const errMsg = e.response?.data ? JSON.stringify(e.response.data) : 'Gagal menyimpan data';
         toast.add({ severity: 'error', summary: 'Error', detail: errMsg, life: 5000 });
     }
 };
 
-// --- DELETE ---
 const confirmDeleteProduct = (item) => {
     confirm.require({
         message: `Apakah Anda yakin ingin menghapus "${item.nama_kegiatan}"?`,
@@ -290,10 +325,6 @@ const confirmDeleteProduct = (item) => {
     });
 };
 
-// Helper warna badge kategori (Opsional)
-const getSeverity = (id) => 'info'; 
-
-// Load data saat komponen di-mount
 onMounted(() => {
     fetchData();
     fetchCategories();
@@ -315,6 +346,7 @@ onMounted(() => {
             <Toolbar class="mb-4 rounded-xl border-none shadow-sm p-4 bg-white">
                 <template #start>
                     <Button label="Tambah Kegiatan" icon="pi pi-plus" severity="success" class="mr-2" @click="openNew" />
+                    <Button label="Kelola Kategori" icon="pi pi-tags" severity="info" outlined @click="openManageCategory" />
                 </template>
                 <template #end>
                     <IconField>
@@ -343,12 +375,9 @@ onMounted(() => {
                         <div v-else class="w-16 h-12 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400 border">No Img</div>
                     </template>
                 </Column>
-
                 <Column field="nama_kegiatan" header="Nama Kegiatan" sortable style="min-width: 14rem"></Column>
                 <Column field="tahun" header="Tahun" sortable style="width: 8rem"></Column>
-                
                 <Column field="nama_mitra" header="Mitra" sortable style="min-width: 10rem"></Column>
-
                 <Column header="Kategori & SDGs" style="min-width: 12rem">
                     <template #body="slotProps">
                         <div class="flex flex-col gap-1">
@@ -357,7 +386,6 @@ onMounted(() => {
                         </div>
                     </template>
                 </Column>
-
                 <Column :exportable="false" style="min-width: 8rem">
                     <template #body="slotProps">
                         <Button icon="pi pi-pencil" outlined rounded severity="info" class="mr-2" @click="editProduct(slotProps.data)" />
@@ -369,29 +397,30 @@ onMounted(() => {
 
         <Dialog 
             v-model:visible="productDialog" 
-            :style="{ width: '900px' }" 
+            :style="{ width: '800px' }" 
             :header="isEditMode ? 'Edit Kegiatan' : 'Tambah Kegiatan Baru'" 
             :modal="true" 
             class="p-fluid"
             @show="onDialogShow"
         >
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+            <div class="flex flex-col gap-6 mt-2">
                 
-                <div class="flex flex-col gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     
-                    <div class="flex flex-col gap-2">
+                    <div class="flex flex-col gap-2 md:col-span-2">
                         <label for="name" class="font-bold">Nama Kegiatan <span class="text-red-500">*</span></label>
                         <InputText id="name" v-model.trim="form.nama_kegiatan" required="true" :class="{'p-invalid': submitted && !form.nama_kegiatan}" />
                         <small class="p-error" v-if="submitted && !form.nama_kegiatan">Nama wajib diisi.</small>
                     </div>
 
-                    <div class="flex gap-4">
-                        <div class="flex-1 flex flex-col gap-2">
-                            <label class="font-bold">Tahun</label>
-                            <InputNumber v-model="form.tahun" :useGrouping="false" />
-                        </div>
-                        <div class="flex-1 flex flex-col gap-2">
-                            <label class="font-bold">Kategori <span class="text-red-500">*</span></label>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold">Tahun</label>
+                        <InputNumber v-model="form.tahun" :useGrouping="false" />
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold">Kategori <span class="text-red-500">*</span></label>
+                        <div class="flex gap-2">
                             <Dropdown 
                                 v-model="form.kategori" 
                                 :options="categories" 
@@ -402,26 +431,26 @@ onMounted(() => {
                                 filter
                                 :class="{'p-invalid': submitted && !form.kategori}"
                             />
-                            <small class="p-error" v-if="submitted && !form.kategori">Pilih kategori.</small>
+                            <Button icon="pi pi-cog" severity="secondary" outlined @click="openManageCategory" v-tooltip.top="'Kelola Kategori'" />
                         </div>
+                        <small class="p-error" v-if="submitted && !form.kategori">Pilih kategori.</small>
                     </div>
 
-                    <div class="flex gap-4">
-                        <div class="flex-1 flex flex-col gap-2">
-                            <label class="font-bold">Kategori SDGs</label>
-                            <Dropdown 
-                                v-model="form.kategori_sdgs" 
-                                :options="sdgOptions" 
-                                optionLabel="label" 
-                                optionValue="value" 
-                                placeholder="Pilih SDG" 
-                                filter
-                            />
-                        </div>
-                        <div class="flex-1 flex flex-col gap-2">
-                            <label class="font-bold">Nama Mitra</label>
-                            <InputText v-model="form.nama_mitra" />
-                        </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold">Kategori SDGs</label>
+                        <Dropdown 
+                            v-model="form.kategori_sdgs" 
+                            :options="sdgOptions" 
+                            optionLabel="label" 
+                            optionValue="value" 
+                            placeholder="Pilih SDG" 
+                            filter
+                        />
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold">Nama Mitra</label>
+                        <InputText v-model="form.nama_mitra" />
                     </div>
 
                     <div class="flex flex-col gap-2">
@@ -434,12 +463,12 @@ onMounted(() => {
                         <InputText v-model="form.url" placeholder="https://..." />
                     </div>
 
-                    <div class="flex flex-col gap-2">
+                    <div class="flex flex-col gap-2 md:col-span-2">
                         <label class="font-bold">Abstrak / Keterangan</label>
-                        <Textarea v-model="form.abstrak" rows="3" cols="20" />
+                        <Textarea v-model="form.abstrak" rows="3" />
                     </div>
 
-                    <div class="flex flex-col gap-2">
+                    <div class="flex flex-col gap-2 md:col-span-2">
                         <label class="font-bold">Foto Kegiatan</label>
                         <div v-if="form.foto_preview" class="mb-2">
                             <img :src="form.foto_preview" class="h-24 w-auto rounded border shadow-sm" alt="Preview" />
@@ -448,18 +477,19 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <div class="flex flex-col gap-2 h-full min-h-[400px]">
+                <div class="flex flex-col gap-2 border-t pt-4">
                     <label class="font-bold">Titik Lokasi (Geser Marker) <span class="text-red-500">*</span></label>
                     <div class="flex gap-2 mb-2">
                         <InputText v-model="form.latitude" placeholder="Latitude" class="w-1/2 bg-gray-50" />
                         <InputText v-model="form.longitude" placeholder="Longitude" class="w-1/2 bg-gray-50" />
                     </div>
                     
-                    <div class="flex-1 border rounded-lg overflow-hidden relative shadow-inner bg-gray-100 h-full min-h-[350px]">
+                    <div class="border rounded-lg overflow-hidden relative shadow-inner bg-gray-100 h-[350px]">
                         <div id="picker-map" class="absolute inset-0 w-full h-full z-0"></div>
                     </div>
-                    <small class="text-gray-500">Klik peta atau geser marker untuk menentukan lokasi.</small>
+                    <small class="text-gray-500">Klik peta atau geser marker untuk menentukan lokasi koordinat.</small>
                 </div>
+
             </div>
 
             <template #footer>
@@ -468,15 +498,61 @@ onMounted(() => {
             </template>
         </Dialog>
 
+        <Dialog 
+            v-model:visible="manageCategoryDialog" 
+            :style="{ width: '500px' }" 
+            header="Kelola Kategori" 
+            :modal="true" 
+            class="p-fluid"
+        >
+            <div class="flex flex-col gap-5 mt-2">
+                <div class="flex flex-col gap-2 border bg-gray-50 p-4 rounded-lg">
+                    <label for="new_category" class="font-bold text-sm">Tambah Kategori Baru</label>
+                    <div class="flex gap-2">
+                        <InputText 
+                            id="new_category" 
+                            v-model.trim="newCategoryName" 
+                            placeholder="Ketik nama kategori..." 
+                            @keyup.enter="saveCategory" 
+                        />
+                        <Button label="Simpan" icon="pi pi-plus" @click="saveCategory" :loading="savingCategory" severity="success" class="w-auto px-4" />
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <label class="font-bold text-sm">Daftar Kategori Tersedia</label>
+                    <DataTable :value="categories" scrollable scrollHeight="250px" size="small" class="border rounded-lg">
+                        <Column field="label" header="Nama Kategori"></Column>
+                        <Column header="Aksi" style="width: 5rem; text-align: center">
+                            <template #body="slotProps">
+                                <Button 
+                                    icon="pi pi-trash" 
+                                    severity="danger" 
+                                    text 
+                                    rounded 
+                                    @click="deleteCategory(slotProps.data.value, slotProps.data.label)" 
+                                    v-tooltip.left="'Hapus Kategori'"
+                                />
+                            </template>
+                        </Column>
+                        <template #empty>
+                            <div class="text-center p-4 text-gray-500">Belum ada kategori.</div>
+                        </template>
+                    </DataTable>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Tutup" icon="pi pi-times" text @click="manageCategoryDialog = false" />
+            </template>
+        </Dialog>
+
     </div>
 </template>
 
 <style scoped>
-/* Pastikan Map Leaflet berada di bawah dialog PrimeVue jika ada masalah z-index */
 .leaflet-pane {
     z-index: 0 !important;
 }
-/* Style tambahan untuk map control agar terlihat rapi */
 .leaflet-top, .leaflet-bottom {
     z-index: 400 !important;
 }

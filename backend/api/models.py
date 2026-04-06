@@ -25,7 +25,7 @@ class PeranFT(models.Model):
 
     # Data Dasar 
     nama_kegiatan = models.CharField(max_length=255)
-    abstrak = models.TextField(help_text="Keterangan singkat kegiatan")
+    abstrak = models.TextField(help_text="Keterangan singkat kegiatan", blank=True, null=True)
     
     # Data Mitra & Lokasi 
     nama_mitra = models.CharField(max_length=200)

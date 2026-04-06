@@ -15,6 +15,10 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Tambahkan di bagian paling bawah settings.py
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -40,20 +44,11 @@ CORS_ALLOW_HEADERS = [
 ]
 
 if os.name == 'nt':
-    # Sesuaikan path ini dengan folder instalasi QGIS Anda yang sebenarnya
-    # Pastikan folder 'bin' di dalamnya memuat gdalxxx.dll
-    QGIS_ROOT = r"C:\Program Files\QGIS 3.40.14" 
-    
-    # 1. Tambahkan folder bin QGIS ke PATH Windows agar dependencies terbaca
-    os.environ['PATH'] = os.path.join(QGIS_ROOT, 'bin') + ';' + os.environ['PATH']
-    
-    # 2. Set folder data GDAL & PROJ (Wajib untuk koordinat/proyeksi)
-    # Cek di folder QGIS Anda, biasanya ada di share/gdal atau apps/gdal/share
-    # Jika error, coba cari folder 'gdal' di dalam folder QGIS Anda
-    os.environ['GDAL_DATA'] = os.path.join(QGIS_ROOT, 'share', 'gdal')
-    os.environ['PROJ_LIB'] = os.path.join(QGIS_ROOT, 'share', 'proj')
-    GDAL_LIBRARY_PATH = os.path.join(QGIS_ROOT, 'bin', 'gdal312.dll')
-# Application definition
+    gdal_root = r"/usr/bin/gdal/"
+    os.environ['PATH'] = os.path.join(gdal_root, 'bin') + ';' + os.environ['PATH']
+    os.environ['GDAL_DATA'] = os.path.join(gdal_root, 'share', 'gdal')
+    os.environ['PROJ_LIB'] = os.path.join(gdal_root, 'share', 'proj')
+    GDAL_LIBRARY_PATH = os.path.join(gdal_root, 'bin', 'gdal312.dll')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -111,7 +106,7 @@ DATABASES = {
         'NAME': 'teknik',
         'USER': 'postgres',
         'PASSWORD': 'postgres',
-        'HOST': 'localhost',
+        'HOST': 'db',
         'PORT': '5432',
     }
 }

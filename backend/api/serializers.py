@@ -13,7 +13,7 @@ class PeranFTGeoSerializer(GeoFeatureModelSerializer):
     Frontend mapping library akan sangat mudah membacanya.
     """
     kategori_nama = serializers.ReadOnlyField(source='kategori.nama')
-    foto_url = serializers.SerializerMethodField()
+    # foto_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PeranFT
@@ -21,7 +21,7 @@ class PeranFTGeoSerializer(GeoFeatureModelSerializer):
         fields = [
             'id', 'kategori', 'kategori_nama', 'nama_kegiatan', 
             'abstrak', 'nama_mitra', 'lokasi_administratif', 
-            'kategori_sdgs', 'foto_url', 'url', 'tahun'
+            'kategori_sdgs', 'foto', 'url', 'tahun'
         ]
 
     def get_foto_url(self, obj):

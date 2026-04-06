@@ -15,3 +15,4 @@ urlpatterns = [
 # Tambahan ini PENTING agar Django bisa melayani file foto/media saat mode DEBUG=True
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    

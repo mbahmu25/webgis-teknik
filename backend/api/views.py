@@ -30,7 +30,7 @@ class PeranFTViewSet(viewsets.ModelViewSet):
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = PeranFTFilter
 
-class KategoriViewSet(viewsets.ReadOnlyModelViewSet):
+class KategoriViewSet(viewsets.ModelViewSet):
     """
     API untuk mengisi dropdown kategori di frontend
     """
